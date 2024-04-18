@@ -3,29 +3,33 @@ import calfem.core as cfc
 import calfem.mesh as cfm
 import calfem.utils as cfu
 import matplotlib as mpl
-import matplotlib.pyplot as plt
-mpl.use('TkAgg')
 import calfem.vis_mpl as cfv
 import numpy as np
+import matplotlib.pyplot as plt
+mpl.use('TkAgg')
+
 
 # Mesh data
-el_sizef, el_type, dofs_pn = 0.1, 2, 1
+el_sizef, el_type, dofs_pn = 1, 2, 1
 mesh_dir = ".venv/"
 
-MARKER_T_1000 = 0
-MARKER_T_100 = 1
-MARKER_QN_0 = 2
+MARKER_TOP = 0
+MARKER_SIDES = 1
+MARKER_WARM = 2
+MARKER_COOL = 4
+MARKER_0 = 5
+
 
 # initialize mesh
 g = cfg.geometry()
 
-# define parameters
-R = 0.225
-M = 1
-B = 3
-L = 4
-H = 2
-D = 0.875
+# define parameters for the geometry
+R = 0.25   # Radius of circles
+M = 1   # Y-axis for middle of circles
+B = 3   # Length of bottom part
+L = 4   # Length of top part
+H = 2   # Height of battery
+D = 0.875   # Length between middle of circles
 
 # add points
 # points for surface
@@ -60,31 +64,31 @@ g.point([3*D+R, M], 21)
 g.point([3*D, M-R], 22)
 
 # define lines / circle segments
-g.spline([0, 1], 0, marker=MARKER_QN_0)
-g.circle([1, 2, 3], 1, marker=MARKER_T_1000)
-g.circle([3, 2, 4], 2, marker=MARKER_T_1000)
-g.spline([4, 5], 3, marker=MARKER_QN_0)
-g.spline([5, 6], 4, marker=MARKER_T_100)
-g.spline([6, 7], 5, marker=MARKER_T_100)
-g.spline([7, 0], 6, marker=MARKER_T_100)
+g.spline([0, 1], 0, marker=MARKER_0)
+g.circle([1, 2, 3], 1, marker=MARKER_WARM)
+g.circle([3, 2, 4], 2, marker=MARKER_WARM)
+g.spline([4, 5], 3, marker=MARKER_0)
+g.spline([5, 6], 4, marker=MARKER_TOP)
+g.spline([6, 7], 5, marker=MARKER_SIDES)
+g.spline([7, 0], 6, marker=MARKER_SIDES)
 
 # circle 1
-g.circle([9, 8, 10], 7, marker=MARKER_T_1000)
-g.circle([10, 8, 11], 8, marker=MARKER_T_1000)
-g.circle([11, 8, 12], 9, marker=MARKER_T_1000)
-g.circle([12, 8, 9], 10, marker=MARKER_T_1000)
+g.circle([9, 8, 10], 7, marker=MARKER_COOL)
+g.circle([10, 8, 11], 8, marker=MARKER_COOL)
+g.circle([11, 8, 12], 9, marker=MARKER_COOL)
+g.circle([12, 8, 9], 10, marker=MARKER_COOL)
 
 # circle 2
-g.circle([14, 13, 15], 11, marker=MARKER_T_1000)
-g.circle([15, 13, 16], 12, marker=MARKER_T_1000)
-g.circle([16, 13, 17], 13, marker=MARKER_T_1000)
-g.circle([17, 13, 14], 14, marker=MARKER_T_1000)
+g.circle([14, 13, 15], 11, marker=MARKER_WARM)
+g.circle([15, 13, 16], 12, marker=MARKER_WARM)
+g.circle([16, 13, 17], 13, marker=MARKER_WARM)
+g.circle([17, 13, 14], 14, marker=MARKER_WARM)
 
 # circle 3
-g.circle([19, 18, 20], 15, marker=MARKER_T_1000)
-g.circle([20, 18, 21], 16, marker=MARKER_T_1000)
-g.circle([21, 18, 22], 17, marker=MARKER_T_1000)
-g.circle([22, 18, 19], 18, marker=MARKER_T_1000)
+g.circle([19, 18, 20], 15, marker=MARKER_COOL)
+g.circle([20, 18, 21], 16, marker=MARKER_COOL)
+g.circle([21, 18, 22], 17, marker=MARKER_COOL)
+g.circle([22, 18, 19], 18, marker=MARKER_COOL)
 
 g.surface([0, 1, 2, 3, 4, 5, 6], [[7, 8, 9, 10], [11, 12, 13, 14], [15, 16, 17, 18]])
 
@@ -109,26 +113,27 @@ cfv.drawMesh(
     filled=True,
     title="Mesh"
 )
-cfv.showAndWait()
 
 # Boundary Conditions
 bc, bc_value = np.array([], 'i'), np.array([], 'f')
-bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_T_1000, 25, 1)
-bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_T_100, 1000, 1)
+bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_TOP, 293, 1)
+bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_SIDES, 293, 1)
+bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_WARM, 293, 1)
+bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_COOL, 293, 1)
 
 K = np.mat(np.zeros((len(dofs), len(dofs))))
-F = np.mat(np.zeros((len(dofs),1)))
+F = np.mat(np.zeros((len(dofs), 1)))
 ex, ey = cfc.coordxtr(edof, coord, dofs)
 
 for eltopo, elx, ely, elMarker in zip(edof, ex, ey, element_markers):
     ep = [1.0]
     D = [[dofs_pn, 0],
          [0, dofs_pn]]
-    Ke = cfc.flw2te(elx,ely,ep,D)
+    Ke = cfc.flw2te(elx, ely, ep, D)
     cfc.assem(eltopo, K, Ke)
 
 
-a,r = cfc.solveq(K,F,bc,bc_value)
+a, r = cfc.solveq(K, F, bc, bc_value)
 
 cfv.figure()
 cfv.draw_nodal_values(a, coord, edof)
