@@ -16,8 +16,8 @@ mesh_dir = ".venv/"
 MARKER_TOP = 0
 MARKER_SIDES = 1
 MARKER_WARM = 2
-MARKER_COOL = 4
-MARKER_0 = 5
+MARKER_COOL = 3
+MARKER_0 = 4
 
 
 # initialize mesh
