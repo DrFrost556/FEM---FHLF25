@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 mpl.use('TkAgg')
 
-
+# HELLO
 # Mesh data
 el_sizef, el_type, dofs_pn = 1, 2, 1
 mesh_dir = ".venv/"
