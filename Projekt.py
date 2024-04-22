@@ -2,14 +2,9 @@ import calfem.geometry as cfg
 import calfem.core as cfc
 import calfem.mesh as cfm
 import calfem.utils as cfu
-import matplotlib as mpl
 import calfem.vis_mpl as cfv
 import numpy as np
-import matplotlib.pyplot as plt
-mpl.use('TkAgg')
 
-# HELLO
-# Testar att pusha detta!
 # Mesh data
 el_sizef, el_type, dofs_pn = 1, 2, 1
 mesh_dir = ".venv/"
