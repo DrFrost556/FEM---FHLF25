@@ -21,7 +21,7 @@ class BatteryProblem:
 
         self.thickness = [1.0]
 
-        self.h = -1e2
+        self.h = 100 # [Q]
 
         self.L = 0.001  # [M]
 
@@ -60,20 +60,11 @@ class BatteryProblem:
 
     def solve_static(self):
         K = np.zeros((np.size(self.dofs), np.size(self.dofs)))
-        for eldof, elx, ely, material_index in zip(self.edof, self.ex, self.ey, self.element_markers):
-            Ke = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D)
-            cfc.assem(eldof, K, Ke)
-
         # Create force vector
         f = np.zeros([np.size(self.dofs), 1])
-
-        # Add f_h
-        f_h_nodes = list(map(
-            itemgetter("node-number-list"),
-            self.boundary_elements[Boundaries.TOP_BATTERY]
-        ))
-        self.integrate_boundary_load(
-            f_h_nodes, f, -self.h*self.thickness[0] * 1/2)
+        for eldof, elx, ely, material_index in zip(self.edof, self.ex, self.ey, self.element_markers):
+            Ke, fe = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D, self.h*80)
+            cfc.assem(eldof, K, Ke, f, fe)
 
         # Add f_c
         f_c_nodes = list(map(
