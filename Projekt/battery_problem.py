@@ -13,7 +13,7 @@ class BatteryProblem:
         self.T_inf = 20  # [C]
         self.T_0 = 20  # [C]
         self.T_in = 4  # [C]
-        self.T_out = 12 # [C]
+        self.T_out = 12  # [C]
 
         # Convection constants
         self.alpha_c = 120
@@ -35,7 +35,7 @@ class BatteryProblem:
         # CALFEM specific shorthand
         self.ep = [2, self.thickness[0]]
 
-    def integrate_boundary_convection(self, node_pair_list, k_sub):
+    def integrate_boundary_convection(self, node_pair_list, k_sub, alpha):
         # Calculates the integral N^tN over an element edge
         for p1, p2 in node_pair_list:
             r1 = self.coords[(self.dofs == p1).flatten()]
@@ -45,7 +45,7 @@ class BatteryProblem:
             # Specific for our three pint triangular element
             k_e = np.array([[1/3, 1/6],
                             [1/6, 1/3]]) * \
-                self.alpha_c * self.thickness[0] * distance
+                alpha * self.thickness[0] * distance
 
             cfc.assem(np.array([p1, p2]), k_sub, k_e)
 
@@ -67,28 +67,34 @@ class BatteryProblem:
             cfc.assem(eldof, K, Ke, f, fe)
 
         # Add f_c
-        f_c_nodes = list(map(
+        f_c_top = list(map(
             itemgetter("node-number-list"),
-            self.element_markers[Boundaries.TOP_BATTERY]
+            self.boundary_elements[Boundaries.TOP_BATTERY]
         ))
-        self.integrate_boundary_load(f_c_nodes, f, self.T_inf *
+        self.integrate_boundary_load(f_c_top, f, self.T_inf *
                                      self.alpha_n * self.thickness[0] * 1/2)
-        f_c_nodes = list(map(
+
+        f_c_warm = list(map(
             itemgetter("node-number-list"),
             self.boundary_elements[Boundaries.WARM_CIRCLE]
         ))
-        self.integrate_boundary_load(f_c_nodes, f, self.T_out *
+        self.integrate_boundary_load(f_c_warm, f, self.T_out *
                                      self.alpha_c * self.thickness[0] * 1/2)
-        f_c_nodes = list(map(
+
+        f_c_cool = list(map(
             itemgetter("node-number-list"),
             self.boundary_elements[Boundaries.COOL_CIRCLE]
         ))
-        self.integrate_boundary_load(f_c_nodes, f, self.T_in *
+        self.integrate_boundary_load(f_c_cool, f, self.T_in *
                                      self.alpha_c * self.thickness[0] * 1/2)
 
         # Add K_c
         K_c = np.zeros((np.size(self.dofs), np.size(self.dofs)))
-        self.integrate_boundary_convection(f_c_nodes, K_c)
+        self.integrate_boundary_convection(f_c_top, K_c, self.alpha_n)
+        K += K_c
+        self.integrate_boundary_convection(f_c_warm, K_c, self.alpha_c)
+        K += K_c
+        self.integrate_boundary_convection(f_c_cool, K_c, self.alpha_c)
         K += K_c
 
         a_stat = np.linalg.solve(K, f)
