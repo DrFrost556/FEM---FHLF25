@@ -8,7 +8,7 @@ class BatteryProblem:
     def __init__(self, size_factor=None) -> None:
         # Material parameters, found in project description
         self.materials = {
-            Material.BATTERY: IsomorphicMaterial(80, 5, 0.36, 60e-6, 540, 3600, "Battery")}
+            Material.BATTERY: HomogenousMaterial(80, 5, 0.36, 60e-6, 540, 3600, "Battery")}
 
         self.T_inf = 20  # [C]
         self.T_0 = 20  # [C]
@@ -21,7 +21,7 @@ class BatteryProblem:
 
         self.thickness = [1.0]
 
-        self.h = 100 # [Q]
+        self.h = 100  # [Q]
 
         self.L = 0.001  # [M]
 
@@ -49,14 +49,13 @@ class BatteryProblem:
 
             cfc.assem(np.array([p1, p2]), k_sub, k_e)
 
-    def integrate_boundary_load(self, node_pair_list, f_sub, factor):
-        # Calculates the integral N^tN over an element edge
+    def boundary_conv_add(self, node_pair_list, f_b, temp, alpha):
         for p1, p2 in node_pair_list:
             r1 = self.coords[(self.dofs == p1).flatten()]
             r2 = self.coords[(self.dofs == p2).flatten()]
             distance = np.linalg.norm(r1 - r2)
 
-            f_sub[np.isin(self.dofs, [p1, p2])] += factor * distance
+            f_b[np.isin(self.dofs, [p1, p2])] += temp * alpha * distance
 
     def solve_static(self):
         K = np.zeros((np.size(self.dofs), np.size(self.dofs)))
@@ -66,34 +65,20 @@ class BatteryProblem:
             Ke, fe = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D, self.h*80)
             cfc.assem(eldof, K, Ke, f, fe)
 
-        # Add f_c
-        f_c_top = list(map(
-            itemgetter("node-number-list"),
-            self.boundary_elements[Boundaries.TOP_BATTERY]
-        ))
-        self.integrate_boundary_load(f_c_top, f, self.T_inf *
-                                     self.alpha_n * self.thickness[0] * 1/2)
+        # Add different f_c
+        f_c_top = list(map(itemgetter("node-number-list"), self.boundary_elements[Boundaries.TOP_BATTERY]))
+        self.boundary_conv_add(f_c_top, f, self.T_inf, self.alpha_n)
 
-        f_c_warm = list(map(
-            itemgetter("node-number-list"),
-            self.boundary_elements[Boundaries.WARM_CIRCLE]
-        ))
-        self.integrate_boundary_load(f_c_warm, f, self.T_out *
-                                     self.alpha_c * self.thickness[0] * 1/2)
+        f_c_warm = list(map(itemgetter("node-number-list"), self.boundary_elements[Boundaries.WARM_CIRCLE]))
+        self.boundary_conv_add(f_c_warm, f, self.T_out, self.alpha_c)
 
-        f_c_cool = list(map(
-            itemgetter("node-number-list"),
-            self.boundary_elements[Boundaries.COOL_CIRCLE]
-        ))
-        self.integrate_boundary_load(f_c_cool, f, self.T_in *
-                                     self.alpha_c * self.thickness[0] * 1/2)
+        f_c_cool = list(map(itemgetter("node-number-list"), self.boundary_elements[Boundaries.COOL_CIRCLE]))
+        self.boundary_conv_add(f_c_cool, f, self.T_in, self.alpha_c)
 
-        # Add K_c
+        # Add different K_c
         K_c = np.zeros((np.size(self.dofs), np.size(self.dofs)))
         self.integrate_boundary_convection(f_c_top, K_c, self.alpha_n)
-        K += K_c
         self.integrate_boundary_convection(f_c_warm, K_c, self.alpha_c)
-        K += K_c
         self.integrate_boundary_convection(f_c_cool, K_c, self.alpha_c)
         K += K_c
 
@@ -101,8 +86,9 @@ class BatteryProblem:
 
         return a_stat, K, f
 
-class IsomorphicMaterial:
-    """Defines an isomorphic material
+
+class HomogenousMaterial:
+    """Defines material
     k: Thermal conductivity [W/(mK)]
     E: Young's modulus [Pa]
     v: Poisson's ratio
