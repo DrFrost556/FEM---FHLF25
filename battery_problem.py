@@ -103,8 +103,31 @@ class BatteryProblem:
         # beginning of time-stepping function
         theta = 1.0
 
-        delta_t = 300
+        delta_t = 1
 
+        total_time = 0
+
+        # a_0 from T_0
+        a = np.full(self.dofs.shape, self.T_0)
+        snapshot = [a]
+        snapshot_time = [total_time]
+        n = 600
+
+        # advance time until 1 hour, lägga till f_b och f_l
+        while total_time <= 3600:
+            K_hat = C+delta_t*theta*K
+            f_hat = delta_t*f+(C-delta_t*K*(1-theta))
+            a = np.linalg.solve(K_hat, f_hat)
+
+            if total_time % n == 0:
+                snapshot.append(a)
+                snapshot_time.append(total_time)
+            total_time += delta_t
+
+        return snapshot, snapshot_time
+
+
+# What is the capacitance matrix? Fråga övningsledare
 
 
 
