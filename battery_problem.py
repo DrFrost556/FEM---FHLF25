@@ -3,6 +3,7 @@ import numpy as np
 from operator import itemgetter
 from geometry import battery_mesh, Boundaries, Material
 from plantml import plantml
+import math
 
 class BatteryProblem:
     def __init__(self, size_factor=None) -> None:
@@ -49,6 +50,18 @@ class BatteryProblem:
 
             cfc.assem(np.array([p1, p2]), k_sub, k_e)
 
+    def solve_Q1(self, time):
+        Q1 = 100 * math.exp(-144 * ((600 - time) / 3600) ** 2) * 80
+        return Q1
+
+    def solve_Q2(self, time):
+        var = ((600 - time) / 3600)
+        if var > 0:
+            Q2 = 88.42 * 1 * 80
+        else:
+            Q2 = 0
+        return Q2
+
     def boundary_conv_add(self, node_pair_list, f_b, temp, alpha):
         for p1, p2 in node_pair_list:
             r1 = self.coords[(self.dofs == p1).flatten()]
@@ -57,13 +70,17 @@ class BatteryProblem:
 
             f_b[np.isin(self.dofs, [p1, p2])] += temp * alpha * distance
 
-    def solve_static(self):
+    def solve_static(self, time):
         K = np.zeros((np.size(self.dofs), np.size(self.dofs)))
         # Create force vector
         f = np.zeros([np.size(self.dofs), 1])
         for eldof, elx, ely, material_index in zip(self.edof, self.ex, self.ey, self.element_markers):
-            Ke, fe = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D, self.h*80)
-            cfc.assem(eldof, K, Ke, f, fe)
+            if self.solve_Q1(time) == 0:
+                Ke = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D)
+                cfc.assem(eldof, K, Ke)
+            else:
+                Ke, fe = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D, self.solve_Q1(time))
+                cfc.assem(eldof, K, Ke, f, fe)
 
         # Add different f_c
         f_c_top = list(map(itemgetter("node-number-list"), self.boundary_elements[Boundaries.TOP_BATTERY]))
@@ -88,7 +105,20 @@ class BatteryProblem:
 
     def solve_transient(self):
         # (C + delta_tK)a_n+1 = Ca_n + delta_t*f_n+1, a_0 = T_0
-        a_stat, K, f = self.solve_static()
+        # start at t = 0
+        time = 0
+
+        theta = 1.0
+
+        delta_t = 100
+        n = 200
+        step = 0
+
+        # a_0 from T_0
+        a = np.full(self.dofs.shape, self.T_0)
+
+        snapshot = [a]
+        snapshot_time = [time]
 
         # Solving C matrix:
 
@@ -97,38 +127,26 @@ class BatteryProblem:
         for eldof, elx, ely, material_index in zip(self.edof, self.ex, self.ey, self.element_markers):
             rho = self.materials[material_index].density
             c_v = self.materials[material_index].spec_heat
-            Ce = plantml(self.ex, self.ey, (rho * c_v * self.thickness))
+            Ce = plantml(elx, ely, (rho * c_v * self.thickness[0]))
             cfc.assem(eldof, C, Ce)
 
-        # beginning of time-stepping function
-        theta = 1.0
+        while time <= 3600:
+            a_stat, K, f = self.solve_static(time)
 
-        delta_t = 1
-
-        total_time = 0
-
-        # a_0 from T_0
-        a = np.full(self.dofs.shape, self.T_0)
-        snapshot = [a]
-        snapshot_time = [total_time]
-        n = 600
-
-        # advance time until 1 hour, lägga till f_b och f_l
-        while total_time <= 3600:
             K_hat = C+delta_t*theta*K
-            f_hat = delta_t*f+(C-delta_t*K*(1-theta))
+            f_hat = delta_t*f+(C-delta_t*K*(1-theta))@a
             a = np.linalg.solve(K_hat, f_hat)
 
-            if total_time % n == 0:
+            if time == n*step:
                 snapshot.append(a)
-                snapshot_time.append(total_time)
-            total_time += delta_t
+                snapshot_time.append(time)
+                step += 1
+            time += delta_t
+
+            if step == 6:
+                break
 
         return snapshot, snapshot_time
-
-
-# What is the capacitance matrix? Fråga övningsledare
-
 
 
 class HomogenousMaterial:
