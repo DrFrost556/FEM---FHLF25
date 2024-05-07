@@ -2,6 +2,7 @@ import calfem.vis_mpl as cfv
 import matplotlib.pyplot as plt
 import numpy as np
 from battery_problem import BatteryProblem
+import seaborn as sns
 
 def vis_mesh(problem: BatteryProblem):
     plt.xlabel("x (m)")
@@ -13,13 +14,13 @@ def vis_mesh(problem: BatteryProblem):
 def vis_temp(a_stat, problem: BatteryProblem):
     """Visualizes the static temperature distribution"""
 
-    print(f"Maximum temperature {np.amax(a_stat):.2f} (°C)")
+    print(f"Max temp {np.amax(a_stat):.2f} (°C), min temp {np.amin(a_stat):.2f} (°C)")
 
     cfv.figure(fig_size=(10, 10))
     # Mirror in the x and y plane
     draw_nodal_values_shaded(a_stat, problem.coords, problem.edof,
                              dofs_per_node=1, el_type=2, draw_elements=True)
-    draw_nodal_values_shaded(a_stat, [2*problem.L, 0]+[-1, 1]*problem.coords, problem.edof, title=(f"Maximum temperature {np.amax(a_stat):.2f} °C"),
+    draw_nodal_values_shaded(a_stat, [2*problem.L, 0]+[-1, 1]*problem.coords, problem.edof, title=(f"Max temp {np.amax(a_stat):.2f} °C, min temp {np.amin(a_stat):.2f} °C"),
                              dofs_per_node=1, el_type=2, draw_elements=True)
 
     cfv.colorbar()
@@ -58,7 +59,7 @@ def draw_nodal_values_shaded(values, coords, edof, title=None, dofs_per_node=Non
         ax.set(title=title)
 
 
-def vis_transient(snapshots, snapshot_time, problem: BatteryProblem):
+def vis_transient(snapshots, snapshot_time, problem: BatteryProblem, deviations, deviation_time):
     """Visualizes the transient heat distribution by showing six snapshots
     snapshot_time: timestamp for each snapshot
     """
@@ -92,7 +93,7 @@ def vis_transient(snapshots, snapshot_time, problem: BatteryProblem):
         # Mirror in x and y plane
         draw_nodal_values_shaded(snapshot, problem.coords, problem.edof,
                                  dofs_per_node=1, el_type=2, draw_elements=False, vmin=problem.T_0, vmax=vmax)
-        draw_nodal_values_shaded(snapshot, [2*problem.L, 0]+[-1, 1]*problem.coords, problem.edof, title=(f"t={time:.2f}s, max temp {np.amax(snapshot):.2f} °C"),
+        draw_nodal_values_shaded(snapshot, [2*problem.L, 0]+[-1, 1]*problem.coords, problem.edof, title=(f"t={time:.2f}s, max temp {np.amax(snapshot):.2f} °C, min temp {np.amin(snapshot):.2f}°C"),
                                  dofs_per_node=1, el_type=2, draw_elements=False, vmin=problem.T_0, vmax=vmax)
 
     fig.subplots_adjust(right=0.8)
@@ -102,3 +103,12 @@ def vis_transient(snapshots, snapshot_time, problem: BatteryProblem):
         if c.colorbar:
             c.colorbar.set_label('Temperature (°C)', rotation=270, labelpad=20)
     cfv.show_and_wait()
+
+    sns.set_style("darkgrid")
+    plt.figure(figsize=(15, 9))
+    plt.plot(deviation_time, deviations, label="Actual", color='tomato')
+    plt.title("Largest deviation from the ambient temperature over time", fontsize=18, fontweight='bold')
+    plt.xlabel('Time (s)', fontsize=18)
+    plt.ylabel('Temperature (°C)', fontsize=18)
+    plt.show()
+

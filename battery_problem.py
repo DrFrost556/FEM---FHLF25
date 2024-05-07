@@ -5,6 +5,7 @@ from geometry import battery_mesh, Boundaries, Material
 from plantml import plantml
 import math
 
+
 class BatteryProblem:
     def __init__(self, size_factor=None) -> None:
         # Material parameters, found in project description
@@ -21,8 +22,6 @@ class BatteryProblem:
         self.alpha_n = 40
 
         self.thickness = [1.0]
-
-        self.h = 100  # [Q]
 
         self.L = 0.001  # [M]
 
@@ -44,9 +43,9 @@ class BatteryProblem:
             distance = np.linalg.norm(r1 - r2)
 
             # Specific for our three pint triangular element
-            k_e = np.array([[1/3, 1/6],
-                            [1/6, 1/3]]) * \
-                alpha * self.thickness[0] * distance
+            k_e = np.array([[1 / 3, 1 / 6],
+                            [1 / 6, 1 / 3]]) * \
+                  alpha * self.thickness[0] * distance
 
             cfc.assem(np.array([p1, p2]), k_sub, k_e)
 
@@ -74,12 +73,14 @@ class BatteryProblem:
         K = np.zeros((np.size(self.dofs), np.size(self.dofs)))
         # Create force vector
         f = np.zeros([np.size(self.dofs), 1])
+        eq = self.solve_Q1(time)
+
         for eldof, elx, ely, material_index in zip(self.edof, self.ex, self.ey, self.element_markers):
-            if self.solve_Q1(time) == 0:
+            if eq == 0:
                 Ke = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D)
                 cfc.assem(eldof, K, Ke)
             else:
-                Ke, fe = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D, self.solve_Q1(time))
+                Ke, fe = cfc.flw2te(elx, ely, self.thickness, self.materials[material_index].D, eq)
                 cfc.assem(eldof, K, Ke, f, fe)
 
         # Add different f_c
@@ -110,8 +111,8 @@ class BatteryProblem:
 
         theta = 1.0
 
-        delta_t = 100
-        n = 200
+        delta_t = 60
+        n = 720
         step = 0
 
         # a_0 from T_0
@@ -119,6 +120,9 @@ class BatteryProblem:
 
         snapshot = [a]
         snapshot_time = [time]
+
+        deviation = [np.abs(np.amax(a) - self.T_0)]
+        deviation_time = [time]
 
         # Solving C matrix:
 
@@ -131,24 +135,25 @@ class BatteryProblem:
             cfc.assem(eldof, C, Ce)
 
         a_stat, K, _ = self.solve_static(time)
-        
+
         while time <= 3600:
             _, _, f = self.solve_static(time)
 
-            K_hat = C+delta_t*theta*K
-            f_hat = delta_t*f+(C-delta_t*K*(1-theta))@a
+            K_hat = C + delta_t * theta * K
+            f_hat = delta_t * f + (C - delta_t * K * (1 - theta))@a
             a = np.linalg.solve(K_hat, f_hat)
 
-            if time == n*step:
+            if time == n * step:
                 snapshot.append(a)
                 snapshot_time.append(time)
                 step += 1
+
+            deviation.append(np.abs(np.amax(a) - self.T_0))
+            deviation_time.append(time)
+            print(f"Time passed = {time} second")
             time += delta_t
 
-            if step == 6:
-                break
-
-        return snapshot, snapshot_time
+        return snapshot, snapshot_time, deviation, deviation_time
 
 
 class HomogenousMaterial:
