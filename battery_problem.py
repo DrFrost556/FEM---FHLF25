@@ -130,8 +130,10 @@ class BatteryProblem:
             Ce = plantml(elx, ely, (rho * c_v * self.thickness[0]))
             cfc.assem(eldof, C, Ce)
 
+        a_stat, K, _ = self.solve_static(time)
+        
         while time <= 3600:
-            a_stat, K, f = self.solve_static(time)
+            _, _, f = self.solve_static(time)
 
             K_hat = C+delta_t*theta*K
             f_hat = delta_t*f+(C-delta_t*K*(1-theta))@a
