@@ -1,4 +1,5 @@
 import calfem.core as cfc
+import calfem.utils as cfu
 import numpy as np
 from operator import itemgetter
 from geometry import battery_mesh, Boundaries, Material
@@ -21,7 +22,7 @@ class BatteryProblem:
         self.alpha_c = 120
         self.alpha_n = 40
 
-        self.thickness = [1.0]
+        self.thickness = [1.6]
 
         self.L = 0.001  # [M]
 
@@ -45,7 +46,7 @@ class BatteryProblem:
             # Specific for our three pint triangular element
             k_e = np.array([[1 / 3, 1 / 6],
                             [1 / 6, 1 / 3]]) * \
-                  alpha * self.thickness[0] * distance
+                  alpha * distance
 
             cfc.assem(np.array([p1, p2]), k_sub, k_e)
 
@@ -61,19 +62,19 @@ class BatteryProblem:
             Q2 = 0
         return Q2
 
-    def boundary_conv_add(self, node_pair_list, f_b, temp, alpha):
+    def boundary_load_add(self, node_pair_list, f_b, temp, alpha):
         for p1, p2 in node_pair_list:
             r1 = self.coords[(self.dofs == p1).flatten()]
             r2 = self.coords[(self.dofs == p2).flatten()]
             distance = np.linalg.norm(r1 - r2)
 
-            f_b[np.isin(self.dofs, [p1, p2])] += temp * alpha * distance
+            f_b[np.isin(self.dofs, [p1, p2])] += temp * alpha * distance * 1/2
 
     def solve_static(self, time):
         K = np.zeros((np.size(self.dofs), np.size(self.dofs)))
         # Create force vector
         f = np.zeros([np.size(self.dofs), 1])
-        eq = self.solve_Q1(time)
+        eq = self.solve_Q2(time)
 
         for eldof, elx, ely, material_index in zip(self.edof, self.ex, self.ey, self.element_markers):
             if eq == 0:
@@ -85,13 +86,13 @@ class BatteryProblem:
 
         # Add different f_c
         f_c_top = list(map(itemgetter("node-number-list"), self.boundary_elements[Boundaries.TOP_BATTERY]))
-        self.boundary_conv_add(f_c_top, f, self.T_inf, self.alpha_n)
+        self.boundary_load_add(f_c_top, f, self.T_inf, self.alpha_n)
 
         f_c_warm = list(map(itemgetter("node-number-list"), self.boundary_elements[Boundaries.WARM_CIRCLE]))
-        self.boundary_conv_add(f_c_warm, f, self.T_out, self.alpha_c)
+        self.boundary_load_add(f_c_warm, f, self.T_out, self.alpha_c)
 
         f_c_cool = list(map(itemgetter("node-number-list"), self.boundary_elements[Boundaries.COOL_CIRCLE]))
-        self.boundary_conv_add(f_c_cool, f, self.T_in, self.alpha_c)
+        self.boundary_load_add(f_c_cool, f, self.T_in, self.alpha_c)
 
         # Add different K_c
         K_c = np.zeros((np.size(self.dofs), np.size(self.dofs)))
@@ -109,9 +110,9 @@ class BatteryProblem:
         # start at t = 0
         time = 0
 
-        theta = 1.0
+        theta = 1
 
-        delta_t = 60
+        delta_t = 120
         n = 720
         step = 0
 
@@ -121,8 +122,10 @@ class BatteryProblem:
         snapshot = [a]
         snapshot_time = [time]
 
-        deviation = [np.abs(np.amax(a) - self.T_0)]
+        deviation = [(np.amax(a) - self.T_0)]
         deviation_time = [time]
+
+        min_max = np.array([np.amin(a), np.amax(a)])
 
         # Solving C matrix:
 
@@ -148,13 +151,91 @@ class BatteryProblem:
                 snapshot_time.append(time)
                 step += 1
 
-            deviation.append(np.abs(np.amax(a) - self.T_0))
+            deviation.append((np.amax(a) - self.T_0))
             deviation_time.append(time)
+            min_max = np.vstack([min_max, [np.amin(a), np.amax(a)]])
             print(f"Time passed = {time} second")
             time += delta_t
 
-        return snapshot, snapshot_time, deviation, deviation_time
+        return snapshot, snapshot_time, deviation, deviation_time, min_max
 
+    def solve_von_mises(self):
+        ptype = 2
+        time = 3600
+        a_stat, _, _ = self.solve_static(time)
+
+        # Create new degrees of freedom for the stress problem: each node has (x, y) displacement
+        num_nodes = self.coords.shape[0]
+        num_dofs = num_nodes * 2
+
+        # Expand edof for the stress problem
+        expanded_edof = []
+        for eldof in self.edof:
+            stress_eldof = np.zeros(eldof.size * 2, dtype=int)
+            stress_eldof[0::2] = eldof * 2 - 2
+            stress_eldof[1::2] = eldof * 2 - 1
+            expanded_edof.append(stress_eldof)
+        expanded_edof = np.array(expanded_edof)
+
+        # Construct K-matrix (twice as many dofs as for the heat problem)
+        K = np.zeros((num_dofs, num_dofs))
+
+        element_constitutive_D = []
+        E = self.materials[Material.BATTERY].E
+        v = self.materials[Material.BATTERY].v
+
+        for eldof, elx, ely in zip(expanded_edof, self.ex, self.ey):
+            D = cfc.hooke(ptype, E, v)/(1-2*v)
+            element_constitutive_D.append(D)
+            Ke = cfc.plante(elx, ely, self.ep, D)
+            cfc.assem(eldof, K, Ke)
+
+        f_0 = np.zeros((num_dofs, 1))
+
+        for eldof, elx, ely, D in zip(expanded_edof, self.ex, self.ey, element_constitutive_D):
+            alpha = self.materials[Material.BATTERY].alpha
+            dt = np.abs(np.mean(a_stat[eldof[0::2] // 2]) - self.T_0)
+            internal_force = cfc.plantf(elx, ely, self.ep,
+                                        D[np.ix_([0, 1, 3], [0, 1, 3])] * alpha * dt * (1 + v) @ np.array([1, 1, 0]).T).reshape(6, 1)
+            f_0[eldof] += internal_force
+
+        # Get dofs fixed in xy direction (in the heat problem)
+        fixed_bdofs = np.array(self.bdofs[Boundaries.FIXED_BOUNDARY]).flatten() - 1
+        fixed_dofs = np.zeros(fixed_bdofs.size * 2, dtype=int)
+        fixed_dofs[0::2] = fixed_bdofs * 2
+        fixed_dofs[1::2] = fixed_bdofs * 2 + 1
+
+        bcPrescr = np.array([], dtype=int)
+        bcVal = np.array([], dtype=float)
+        boundaryDofs = {1: fixed_dofs}
+
+        # Apply boundary conditions
+        bcPrescr, bcVal = cfu.applybc(boundaryDofs, bcPrescr, bcVal, 1, value=0.0, dimension=0)
+
+        # Solve for displacements with the applied boundary conditions
+        displacement, _ = cfc.solveq(K, f_0, bcPrescr, bcVal)
+
+        ed = cfc.extract_eldisp(expanded_edof, displacement)
+
+        von_mises_element = []
+        for temp_edof, elx, ely, disp, D in zip(self.edof, self.ex, self.ey, ed, element_constitutive_D):
+
+            # Determine element stresses and strains in the element.
+            [[sigx, sigy, sigz, tauxy]], _ = cfc.plants(
+                elx, ely, self.ep, D, disp)
+
+            effective_stress = np.sqrt(
+                sigx ** 2 + sigy ** 2 + sigz ** 2 - sigx * sigy - sigx * sigz - sigy * sigz + 3 * tauxy ** 2)
+            von_mises_element.append(effective_stress)
+
+        von_mises_element = np.array(von_mises_element)
+        von_mises_node = [np.mean(von_mises_element[np.any(np.isin(self.edof, node), axis=1)]) for node in
+                          range(1, num_nodes + 1)]
+
+        return von_mises_node, displacement.reshape(-1, 1)
+
+
+#applybc u=0
 
 class HomogenousMaterial:
     """Defines material
