@@ -205,12 +205,19 @@ class BatteryProblem:
         fixed_dofs[0::2] = fixed_bdofs * 2
         fixed_dofs[1::2] = fixed_bdofs * 2 + 1
 
+        # Get dofs fixed in y direction (in the heat problem)
+        fixed_bdofs_none = np.array(self.bdofs[Boundaries.NONE_BOUNDARY]).flatten() - 1
+        fixed_dofs_none = np.zeros(fixed_bdofs_none.size, dtype=int)
+        fixed_dofs_none[:] = fixed_bdofs_none * 2 + 1  # Only y-direction
+
         bcPrescr = np.array([], dtype=int)
         bcVal = np.array([], dtype=float)
         boundaryDofs = {1: fixed_dofs}
+        boundaryDofsnone = {2: fixed_dofs_none}
 
         # Apply boundary conditions
         bcPrescr, bcVal = cfu.applybc(boundaryDofs, bcPrescr, bcVal, 1, value=0.0, dimension=0)
+        bcPrescr, bcVal = cfu.applybc(boundaryDofsnone, bcPrescr, bcVal, 2, value=0.0, dimension=1)
 
         # Solve for displacements with the applied boundary conditions
         displacement, _ = cfc.solveq(K, f_0, bcPrescr, bcVal)
@@ -232,7 +239,7 @@ class BatteryProblem:
         von_mises_node = [np.mean(von_mises_element[np.any(np.isin(self.edof, node), axis=1)]) for node in
                           range(1, num_nodes + 1)]
 
-        return von_mises_node, displacement.reshape(-1, 1)
+        return von_mises_node, displacement
 
 
 #applybc u=0
