@@ -123,52 +123,17 @@ def vis_transient(snapshots, snapshot_time, problem: BatteryProblem, deviations,
     plt.show()
 
 
-
-    def vis_displacement(von_mises_node, a, problem: BatteryProblem):
-        magnification = 10.0
-        cfv.figure(fig_size=(10, 10))
-
-        flip_y = np.array([([1, -1] * int(a.size / 2))]).T
-        flip_x = np.array([([-1, 1] * int(a.size / 2))]).T
-
-        coords_list = [problem.coords, [2 * problem.L, 0] + [-1, 1] * problem.coords]
-        displacement_list = [a, np.multiply(flip_y, a), np.multiply(
-            flip_y * flip_x, a), np.multiply(flip_x, a)]
-        for coords, displacements in zip(coords_list, displacement_list):
-            if displacements is not None:
-                if displacements.shape[1] != coords.shape[1]:
-                    displacements = np.reshape(
-                        displacements, (-1, coords.shape[1]))
-                    coords_disp = np.asarray(
-                        coords + magnification * displacements)
-            cfv.draw_mesh(coords, problem.edof, 1,
-                          problem.el_type, color=(0, 0, 0, 0.1))
-            draw_nodal_values_shaded(von_mises_node, coords_disp, problem.edof,
-                                     title=(f"Maximum von Mises stress {np.amax(von_mises_node):.1E} [Pa]"),
-                                     dofs_per_node=1, el_type=2, draw_elements=False)
-
-            cfv.draw_mesh(coords_disp, problem.edof, 1,
-                          problem.el_type, color=(0, 1, 0, 0.1))
-
-        cfv.colorbar()
-        plt.xlabel("x (m)")
-        plt.ylabel("y (m)")
-        for c in cfv.gca().collections:
-            if c.colorbar:
-                c.colorbar.set_label('von Mises stress (Pa)',
-                                     rotation=270, labelpad=20)
-        cfv.show_and_wait()
-
 def vis_displacement(von_mises_node, a, problem: BatteryProblem):
-    magnification = 10.0
+    magnification = 25
     cfv.figure(fig_size=(10, 10))
 
-    flip_y = np.array([([1, -1]*int(a.size/2))]).T
-    flip_x = np.array([([-1, 1]*int(a.size/2))]).T
+    #flip_y = np.array([([1, 1]*int(a.size/2))]).T
+    #flip_x = np.array([([-1, 1]*int(a.size/2))]).T
 
-    coords_list = [problem.coords, [2*problem.L, 0]+[-1, 1]*problem.coords]
-    displacement_list = [a, np.multiply(flip_y, a), np.multiply(
-        flip_y*flip_x, a), np.multiply(flip_x, a)]
+    coords_list = [problem.coords]
+        #, [2*problem.L, 0]+[-1, 1]*problem.coords]
+    displacement_list = [a]
+    #, np.multiply(flip_y*flip_x, a), np.multiply(flip_x, a)]
     for coords, displacements in zip(coords_list, displacement_list):
         if displacements is not None:
             if displacements.shape[1] != coords.shape[1]:
@@ -178,7 +143,7 @@ def vis_displacement(von_mises_node, a, problem: BatteryProblem):
                     coords + magnification * displacements)
         cfv.draw_mesh(coords, problem.edof, 1,
                       problem.el_type, color=(0, 0, 0, 0.1))
-        draw_nodal_values_shaded(von_mises_node, coords_disp, problem.edof, title=(f"Maximum von Mises stress {np.amax(von_mises_node):.1E} [Pa]"),
+        draw_nodal_values_shaded(von_mises_node, coords_disp, problem.edof, title=(f"Maximum von Mises stress {np.amax(von_mises_node):.1E} [MPa]"),
                                  dofs_per_node=1, el_type=2, draw_elements=False)
 
         cfv.draw_mesh(coords_disp, problem.edof, 1,
